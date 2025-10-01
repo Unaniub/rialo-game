@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rialo Word Guess Game</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#7dd3fc; --muted:#94a3b8; --success:#34d399; --danger:#fb7185;
+    }
+    body{
+      margin:0; font-family:Inter,system-ui,Arial;
+      background:linear-gradient(180deg,#e9e3d5 0%, #081827 100%);
+      color:#e6eef6; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+    }
+    .wrap{width:100%;max-width:1100px;background:rgba(255,255,255,0.02);padding:20px;border-radius:14px;box-shadow:0 8px 30px rgba(2,6,23,0.6);}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    h1{margin:0;font-size:22px}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+    .top{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin:14px 0}
+    .card{background:var(--card);padding:14px;border-radius:12px;flex:1; min-width:260px}
+    .center{text-align:center}
+    .word{font-size:36px;letter-spacing:8px;margin:18px 0;font-weight:600}
+    #keyboard{display:grid;grid-template-columns:repeat(13,1fr);gap:8px;margin-top:12px}
+    button.key{padding:10px 6px;border-radius:8px;border:0;background:rgba(255,255,255,0.03);color:inherit;font-weight:600;cursor:pointer}
+    button.key:disabled{opacity:0.3;cursor:default}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+    input[type="text"]{padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;text-align:center;font-size:16px;width:60px}
+    .btn{padding:8px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:700}
+    .btn.primary{background:var(--accent);color:#022029}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.03)}
+    .message{padding:10px;border-radius:10px;margin-top:12px}
+    .message.win{background:rgba(52,211,153,0.12);color:var(--success)}
+    .message.lose{background:rgba(251,113,133,0.08);color:var(--danger)}
+    #hearts{font-size:24px;margin-top:6px}
+    footer{margin-top:16px;text-align:center;color:var(--muted);font-size:13px}
+    #leaderboard ol{margin:0;padding-left:20px}
+    #leaderboard li{margin:4px 0;color:var(--muted);font-size:14px}
+  </style>
+</head>
+<body>
+  <img src="logo.png" alt="Game Logo" class="logo">
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Rialo Word Guess Game</h1>
+        <p class="lead">Guess blockchain & Web3 words!</p>
+      </div>
+      <div>
+        <div id="greet" class="pill">Player: —</div>
+        <div id="score" class="pill">Score: 0</div>
+        <div id="level" class="pill">Level: 1</div>
+        <div id="hearts">❤️❤️❤️❤️❤️</div>
+      </div>
+    </header>
+
+    <div class="top">
+      <!-- Game area -->
+      <div class="card">
+        <label style="font-size:13px;color:var(--muted)">Player Name</label><br/>
+        <input id="playerName" type="text" placeholder="Enter name..." aria-label="Player name">
+        <button id="submitNameBtn" class="btn primary">Submit Name</button>
+
+        <div class="center">
+          <div class="word" id="displayWord">— — — —</div>
+          <div id="keyboard"></div>
+
+          <div class="controls">
+            <input id="letterInput" type="text" maxlength="1" placeholder="A" aria-label="Type a letter">
+            <button id="checkBtn" class="btn primary" disabled>Check Letter</button>
+          </div>
+
+          <div class="controls">
+            <button id="submitBtn" class="btn primary">Submit Leaderboard</button>
+            <button id="newBtn" class="btn primary">New Game</button>
+          </div>
+
+          <div id="msg" class="message"></div>
+        </div>
+      </div>
+
+      <!-- Leaderboard -->
+      <div class="card" id="leaderboard">
+        <h3 style="margin-top:0">Leaderboard</h3>
+        <ol id="leaderList"></ol>
+      </div>
+    </div>
+
+    <footer>
+      by: unapastijp
+    </footer>
+  </div>
+
+  <script>
+    const levels = [
+      ["rialo","subzero","wallet","node","api","crypto","token","chain","key","gas"],
+      ["ledger","oracle","smart","shard","stake","layer","finality","fees","rollup","evm"]
+    ];
+
+    let state = {
+      name: '',
+      lives: 5,
+      maxLives: 5,
+      word: '',
+      revealed: [],
+      guessed: new Set(),
+      finished: false,
+      level: 1,
+      score: 0,
+      ready: false
+    };
+
+    const playerNameEl = document.getElementById('playerName');
+    const greetEl = document.getElementById('greet');
+    const scoreEl = document.getElementById('score');
+    const levelEl = document.getElementById('level');
+    const displayWordEl = document.getElementById('displayWord');
+    const keyboardEl = document.getElementById('keyboard');
+    const msgEl = document.getElementById('msg');
+    const newBtn = document.getElementById('newBtn');
+    const checkBtn = document.getElementById('checkBtn');
+    const submitBtn = document.getElementById('submitBtn');
+    const letterInput = document.getElementById('letterInput');
+    const leaderList = document.getElementById('leaderList');
+    const heartsEl = document.getElementById('hearts');
+    const submitNameBtn = document.getElementById('submitNameBtn');
+
+    function init() {
+      buildKeyboard();
+      attachEvents();
+      renderEmpty();
+      renderLeaderboard();
+    }
+
+    function attachEvents() {
+      submitNameBtn.addEventListener('click', () => {
+        state.name = playerNameEl.value.trim();
+        if(!state.name){ msgEl.textContent = "Please enter your name."; return; }
+        greetEl.textContent = "Player: " + state.name;
+        state.ready = true;
+        checkBtn.disabled = false;
+        startNewGame(1);
+      });
+
+      newBtn.addEventListener('click', () => resetGame());
+
+      checkBtn.addEventListener('click', () => {
+        if(!state.ready) { msgEl.textContent="Please submit your name first."; return; }
+        const letter = letterInput.value.toLowerCase();
+        if(letter.match(/[a-z]/i)){
+          guessLetter(letter);
+        }
+        letterInput.value = '';
+      });
+
+      submitBtn.addEventListener('click', () => {
+        saveScore();
+        renderLeaderboard();
+      });
+    }
+
+    function pickWord(level) {
+      const words = levels[level-1];
+      return words[Math.floor(Math.random()*words.length)];
+    }
+
+    function startNewGame(level=1) {
+      state.word = pickWord(level).toLowerCase();
+      state.lives = state.maxLives;
+      state.revealed = Array.from(state.word).map(c => c === ' ' ? ' ' : '_');
+      state.guessed = new Set();
+      state.finished = false;
+      state.level = level;
+      renderWord();
+      refreshKeys();
+      msgEl.textContent = "";
+      updateUI();
+    }
+
+    function resetGame(){
+      state.name = '';
+      playerNameEl.value = '';
+      greetEl.textContent = "Player: —";
+      state.score = 0;
+      state.level = 1;
+      state.ready = false;
+      checkBtn.disabled = true;
+      renderEmpty();
+    }
+
+    function renderEmpty(){
+      displayWordEl.textContent = "— — — —";
+      keyboardEl.innerHTML = "";
+      msgEl.textContent = "Enter your name and submit to start.";
+    }
+
+    function renderWord() {
+      displayWordEl.textContent = state.revealed.map(ch => ch === ' ' ? ' ' : ch.toUpperCase()).join(' ');
+      updateHearts();
+    }
+
+    function buildKeyboard() {
+      keyboardEl.innerHTML = '';
+      const letters = "abcdefghijklmnopqrstuvwxyz".split('');
+      letters.forEach(l => {
+        const btn = document.createElement('button');
+        btn.className = 'key';
+        btn.textContent = l.toUpperCase();
+        btn.setAttribute('data-letter', l);
+        btn.addEventListener('click', () => guessLetter(l));
+        keyboardEl.appendChild(btn);
+      });
+    }
+
+    function refreshKeys() {
+      const keys = keyboardEl.querySelectorAll('button.key');
+      keys.forEach(k => {
+        const letter = k.getAttribute('data-letter');
+        k.disabled = state.guessed.has(letter) || state.finished || !state.ready;
+      });
+    }
+
+    function guessLetter(letter) {
+      if (state.finished) return;
+      if (!state.ready) return;
+      if (state.guessed.has(letter)) return;
+      state.guessed.add(letter);
+      refreshKeys();
+
+      if (state.word.includes(letter)) {
+        for (let i=0;i<state.word.length;i++){
+          if (state.word[i] === letter) state.revealed[i] = letter;
+        }
+        renderWord();
+        checkWin();
+      } else {
+        state.lives -= 1;
+        renderWord(); // <-- tetap render underscore walau salah
+        if (state.lives <= 0) loseGame();
+        else msgEl.textContent = `Wrong! Try again.`;
+      }
+    }
+
+    function checkWin() {
+      if (!state.revealed.includes('_')) {
+        winGame();
+      }
+    }
+
+    function winGame() {
+  state.finished = true;
+  const levelScore = state.lives * 1000;
+  state.score += levelScore;
+  msgEl.innerHTML = `<div class="message win">Congrats ${state.name || 'Player'} — You cleared Level ${state.level}! Word: <strong>${state.word.toUpperCase()}</strong><br>Score +${levelScore}</div>`;
+  updateUI();
+
+  // kalau belum sampai level terakhir, lanjut ke level berikutnya
+  if (state.level < levels.length) {
+    setTimeout(() => {
+      state.level += 1;          // naikkan level
+      startNewGame(state.level); // mulai game baru di level berikutnya
+    }, 2000);
+  } else {
+    msgEl.innerHTML += `<div class="message win">🎉 You completed all ${levels.length} levels! Final Score: ${state.score}</div>`;
+  }
+}
+
+    function loseGame() {
+      state.finished = true;
+      msgEl.innerHTML = `<div class="message lose">You lost! The word was <strong>${state.word.toUpperCase()}</strong><br>Final Score: ${state.score}</div>`;
+    }
+
+    function updateHearts() {
+      let hearts = '';
+      for(let i=0;i<state.maxLives;i++){
+        hearts += (i<state.lives) ? '❤️' : '🤍';
+      }
+      heartsEl.textContent = hearts;
+    }
+
+    function updateUI(){
+      scoreEl.textContent = "Score: " + state.score;
+      levelEl.textContent = "Level: " + state.level;
+      updateHearts();
+      refreshKeys();
+    }
+
+    function saveScore(){
+      if (!state.name) return;
+      let board = JSON.parse(localStorage.getItem('leaderboard')||'[]');
+      board.push({name: state.name, score: state.score});
+      board.sort((a,b)=>b.score-a.score);
+      board = board.slice(0,10);
+      localStorage.setItem('leaderboard', JSON.stringify(board));
+    }
+
+    function renderLeaderboard(){
+      let board = JSON.parse(localStorage.getItem('leaderboard')||'[]');
+      leaderList.innerHTML = board.map(e=>`<li>${e.name} — ${e.score}</li>`).join('');
+    }
+
+    init();
+  </script>
+</body>
+</html>
